@@ -1,8 +1,9 @@
-const { url } = require("inspector");
+// const { url } = require("inspector");
 const path = require("path");
 const xlsx = require("xlsx");
 const dotenv = require("dotenv");
 const getRefreshToken = require("./refresh-token.js");
+const addListingImage = require("./add-image.js");
 
 dotenv.config();
 
@@ -30,10 +31,6 @@ async function readExcelFile(filePath) {
     urlencoded.append("price", data[i].price);
     urlencoded.append("quantity", data[i].quantity);
     urlencoded.append("category", data[i].category);
-    urlencoded.append("image_1", data[i].image_1);
-    urlencoded.append("image_2", data[i].image_2);
-    urlencoded.append("image_3", data[i].image_3);
-    urlencoded.append("image_4", data[i].image_4);
     urlencoded.append("shipping_profile_id", data[i].shipping_profile_id);
     urlencoded.append("return_policy_id", data[i].return_policy_id);
     urlencoded.append("type", data[i].type);
@@ -47,6 +44,12 @@ async function readExcelFile(filePath) {
     urlencoded.append("action", data[i].action);
     urlencoded.append("listing_state", data[i].listing_state);
     urlencoded.append("taxonomy_id", "132");
+
+    let images = [];
+    images.unshift(data[i].image_1);
+    images.unshift(data[i].image_2);
+    images.unshift(data[i].image_3);
+    images.unshift(data[i].image_4);
 
     let tags = [];
     tags.push(data[i].tag_1);
@@ -70,21 +73,39 @@ async function readExcelFile(filePath) {
       body: urlencoded,
       redirect: "follow",
     };
-    try {
-      const response = await fetch(
-        `https://api.etsy.com/v3/application/shops/${shopId}/listings`,
-        requestOptions
-      );
-    } catch {
-      const token = getRefreshToken(apiKeyString);
-      headers["Authorization"] = `Bearer ${token.access_token}`;
-      const retryResponse = await axios.get(
-        "https://api.etsy.com/v3/application/shops?shop_name=Terranobags",
-        { headers }
-      );
-    }
+    await fetch(
+      `https://api.etsy.com/v3/application/shops/${shopId}/listings`,
+      requestOptions
+    )
+      .then((response) => response.text())
+      .then(async (result) => {
+        const listingId = JSON.parse(result).listing_id;
+        console.log(result);
+        for (let i in images) {
+          await addListingImage(listingId, accessToken, images[i], i);
+        }
+      })
+      .catch(async (error) => {
+        console.log("error", error);
 
-    console.log(`Paused for 1 second before iteration ${i + 1}`);
+        const token = getRefreshToken(apiKeyString);
+        headers["Authorization"] = `Bearer ${token.access_token}`;
+        let requestOptions = {
+          method: "POST",
+          headers,
+          body: urlencoded,
+          redirect: "follow",
+        };
+        await fetch(
+          `https://api.etsy.com/v3/application/shops/${shopId}/listings`,
+          requestOptions
+        )
+          .then((response) => response.text())
+          .then((result) => console.log(result))
+          .catch(async (error) => console.log("error", error));
+      });
+
+    console.log(`Paused for 1 second before iteration ${parseInt(i) + 1}`);
     await delay(1000);
   }
 }
